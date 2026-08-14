@@ -582,6 +582,23 @@
       h1 { font-size: 1.6rem; }
       .card { width: 100%; }
     }
+    /* ---------- FIX PARA MÓVILES ---------- */
+@media (max-width: 640px) {
+  .store-grid {
+    display: block !important; /* en lugar de flex, usamos block */
+    max-height: none !important;
+    overflow: visible !important;
+    height: auto !important;
+  }
+  .card {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-bottom: 16px !important;
+    flex: none !important;
+    flex-shrink: 0 !important;
+  }
+}
   </style>
 </head>
 <body>
