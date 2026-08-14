@@ -654,7 +654,7 @@
     <h3>Panel de Jeroviana 👑</h3>
     <div class="controls">
       <button class="toggle toggle-master" id="btnMasterToggle" onclick="toggleMasterSwitch()">Tienda: ON</button>
-      <button class="toggle active" id="btn_normal" onclick="toggleMode('normal', 'btn_normal')">Reunión Regular</button>
+      <button class="toggle" id="btn_normal" onclick="toggleMode('normal', 'btn_normal')">Reunión Regular</button>
       <button class="toggle" id="btn_publica" onclick="toggleMode('publica', 'btn_publica')">Ceremonia Pública</button>
       <button class="toggle" id="btn_dinamica" onclick="toggleMode('dinamica', 'btn_dinamica')">Dinámica</button>
       <button class="toggle" id="btn_panchos" onclick="toggleMode('panchos', 'btn_panchos')">Panchos</button>
@@ -709,7 +709,7 @@
     let user = null;
     let isGuest = true;
     let isStoreOpen = true;
-    let activeModes = { normal: true, publica: false, dinamica: false, panchos: false, always: true };
+    let activeModes = { normal: false, publica: false, dinamica: false, panchos: false, always: true };
     let activeItem = null;
     let globalLogs = [];
     let catalogItems = [];
@@ -721,12 +721,12 @@
       if (guardados) {
         try {
           const filtros = JSON.parse(guardados);
-          // Solo cargar los modos que existen en el objeto, preservando 'always'
-          if (filtros.normal !== undefined) activeModes.normal = filtros.normal;
-          if (filtros.publica !== undefined) activeModes.publica = filtros.publica;
-          if (filtros.dinamica !== undefined) activeModes.dinamica = filtros.dinamica;
-          if (filtros.panchos !== undefined) activeModes.panchos = filtros.panchos;
-          // 'always' siempre es true
+          // Solo cargar los filtros que existan en activeModes
+          Object.keys(activeModes).forEach(key => {
+            if (key !== 'always' && filtros[key] !== undefined) {
+              activeModes[key] = filtros[key];
+            }
+          });
         } catch(e) {}
       }
       actualizarBotonesModo();
@@ -771,7 +771,7 @@
       };
 
       const items = adminData.privilegios.map(p => {
-        // Log para depuración: ver qué categoría llega desde el servidor
+        // Mostramos la categoría que llega del servidor para depuración
         console.log(`Privilegio: "${p.nombre}", Categoría recibida: "${p.categoria}"`);
 
         const cat = categoriaMap[p.categoria] || "normal";
@@ -845,9 +845,13 @@
 
         globalLogs = data.logs || [];
 
+        // Si es invitada, cargar filtros guardados (aunque no se guardan para invitadas)
         if (isGuest) {
+          actualizarBotonesModo();
           actualizarMuroYAdmin(globalLogs);
           render();
+        } else {
+          cargarFiltrosGuardados();
         }
       } catch (e) {
         console.error(e);
@@ -911,7 +915,7 @@
       document.getElementById('authOverlay').style.display = 'none';
       isGuest = true;
       user = null;
-      activeModes = { normal: true, publica: false, dinamica: false, panchos: false, always: true };
+      activeModes = { normal: false, publica: false, dinamica: false, panchos: false, always: true };
       actualizarBotonesModo();
       try {
         const resp = await fetch(SCRIPT_URL + "?source=store");
@@ -961,8 +965,14 @@
       }
       document.getElementById('storeClosedMsg').style.display = 'none';
 
-      // Filtrar por modos activos: muestra los que tienen cat en activeModes true, O los que son 'always'
-      let items = catalogItems.filter(i => activeModes[i.cat] || activeModes.always);
+      // Filtrar: mostrar si la categoría está activa o es "always"
+      let items = catalogItems.filter(i => {
+        // Si la categoría es "always", siempre se muestra
+        if (i.cat === 'always') return true;
+        // Si no es "always", mostrar solo si el modo correspondiente está activo
+        return activeModes[i.cat] === true;
+      });
+      
       items.sort((a, b) => a.price - b.price);
 
       if (items.length === 0) {
@@ -1161,16 +1171,8 @@
         mostrarMensaje("Inicia sesión para cambiar los filtros de la tienda.");
         return;
       }
-
       // Alternar el estado del modo seleccionado
       activeModes[cat] = !activeModes[cat];
-
-      // Si desactivamos el último modo activo (excepto 'always'), activamos 'normal' por defecto
-      const hasActive = activeModes.normal || activeModes.publica || activeModes.dinamica || activeModes.panchos;
-      if (!hasActive) {
-        activeModes.normal = true;
-      }
-
       guardarFiltros();
       actualizarBotonesModo();
       render();
