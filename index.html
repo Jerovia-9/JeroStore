@@ -583,22 +583,22 @@
       .card { width: 100%; }
     }
     /* ---------- FIX PARA MÓVILES ---------- */
-@media (max-width: 640px) {
-  .store-grid {
-    display: block !important; /* en lugar de flex, usamos block */
-    max-height: none !important;
-    overflow: visible !important;
-    height: auto !important;
-  }
-  .card {
-    display: block !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    margin-bottom: 16px !important;
-    flex: none !important;
-    flex-shrink: 0 !important;
-  }
-}
+    @media (max-width: 640px) {
+      .store-grid {
+        display: block !important;
+        max-height: none !important;
+        overflow: visible !important;
+        height: auto !important;
+      }
+      .card {
+        display: block !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        margin-bottom: 16px !important;
+        flex: none !important;
+        flex-shrink: 0 !important;
+      }
+    }
   </style>
 </head>
 <body>
@@ -726,7 +726,8 @@
     let user = null;
     let isGuest = true;
     let isStoreOpen = true;
-    let activeModes = { normal: false, publica: false, dinamica: false, panchos: false, always: true };
+    // Estado inicial: para invitados, todos los modos activos para que vean todo
+    let activeModes = { normal: true, publica: true, dinamica: true, panchos: true, always: true };
     let activeItem = null;
     let globalLogs = [];
     let catalogItems = [];
@@ -788,9 +789,6 @@
       };
 
       const items = adminData.privilegios.map(p => {
-        // Mostramos la categoría que llega del servidor para depuración
-        console.log(`Privilegio: "${p.nombre}", Categoría recibida: "${p.categoria}"`);
-
         const cat = categoriaMap[p.categoria] || "normal";
         const campos = p.campos || [];
         const campoExtra = p.campoExtra || '';
@@ -809,9 +807,7 @@
         };
       });
 
-      // Filtramos los que tienen precio > 0 y nombre
       const validItems = items.filter(i => i.name && i.price > 0);
-      console.log('Items categorizados:', validItems.map(i => ({ name: i.name, cat: i.cat })));
       return validItems;
     }
 
@@ -862,8 +858,9 @@
 
         globalLogs = data.logs || [];
 
-        // Si es invitada, cargar filtros guardados (aunque no se guardan para invitadas)
+        // Si es invitada, todos los modos activos para que vea todo
         if (isGuest) {
+          activeModes = { normal: true, publica: true, dinamica: true, panchos: true, always: true };
           actualizarBotonesModo();
           actualizarMuroYAdmin(globalLogs);
           render();
@@ -932,7 +929,8 @@
       document.getElementById('authOverlay').style.display = 'none';
       isGuest = true;
       user = null;
-      activeModes = { normal: false, publica: false, dinamica: false, panchos: false, always: true };
+      // Para invitados, todos los modos activos
+      activeModes = { normal: true, publica: true, dinamica: true, panchos: true, always: true };
       actualizarBotonesModo();
       try {
         const resp = await fetch(SCRIPT_URL + "?source=store");
@@ -982,14 +980,18 @@
       }
       document.getElementById('storeClosedMsg').style.display = 'none';
 
-      // Filtrar: mostrar si la categoría está activa o es "always"
-      let items = catalogItems.filter(i => {
-        // Si la categoría es "always", siempre se muestra
-        if (i.cat === 'always') return true;
-        // Si no es "always", mostrar solo si el modo correspondiente está activo
-        return activeModes[i.cat] === true;
-      });
-      
+      // Para invitados: mostrar todos los items sin filtrar
+      let items;
+      if (isGuest) {
+        items = catalogItems;
+      } else {
+        // Para usuarios logueados: aplicar filtros según activeModes
+        items = catalogItems.filter(i => {
+          if (i.cat === 'always') return true;
+          return activeModes[i.cat] === true;
+        });
+      }
+
       items.sort((a, b) => a.price - b.price);
 
       if (items.length === 0) {
