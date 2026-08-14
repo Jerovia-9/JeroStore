@@ -712,7 +712,7 @@
     let activeModes = { normal: true, publica: false, dinamica: false, panchos: false, always: true };
     let activeItem = null;
     let globalLogs = [];
-    let catalogItems = []; // se llena desde Admin
+    let catalogItems = [];
 
     // ---------- FUNCIONES DE ADMIN ----------
     function cargarFiltrosGuardados() {
@@ -721,7 +721,12 @@
       if (guardados) {
         try {
           const filtros = JSON.parse(guardados);
-          activeModes = { ...activeModes, ...filtros };
+          // Solo cargar los modos que existen en el objeto, preservando 'always'
+          if (filtros.normal !== undefined) activeModes.normal = filtros.normal;
+          if (filtros.publica !== undefined) activeModes.publica = filtros.publica;
+          if (filtros.dinamica !== undefined) activeModes.dinamica = filtros.dinamica;
+          if (filtros.panchos !== undefined) activeModes.panchos = filtros.panchos;
+          // 'always' siempre es true
         } catch(e) {}
       }
       actualizarBotonesModo();
@@ -756,22 +761,23 @@
         return getCatalogoDefecto();
       }
 
-      const mapCategoria = {
-        "reunion regular": "normal",
-        "ceremonia abierta": "publica",
-        "dinamica": "dinamica",
-        "jeropancho": "panchos",
-        "siempre": "always"
+      // Mapeo exacto de categorías (coincide con los nombres en la hoja Admin)
+      const categoriaMap = {
+        "Reunion Regular": "normal",
+        "Dinamica": "dinamica",
+        "Ceremonia Abierta": "publica",
+        "JeroPancho": "panchos",
+        "Siempre": "always"
       };
 
       const items = adminData.privilegios.map(p => {
-        // p tiene: nombre, descripcion, costo, cobroExtra (string), campos (array), campoExtra (string)
-        const cat = mapCategoria[(p.categoria || '').toLowerCase().trim()] || 'normal';
-        // campos: array de strings (los nombres de los campos a completar)
+        // Log para depuración: ver qué categoría llega desde el servidor
+        console.log(`Privilegio: "${p.nombre}", Categoría recibida: "${p.categoria}"`);
+
+        const cat = categoriaMap[p.categoria] || "normal";
         const campos = p.campos || [];
         const campoExtra = p.campoExtra || '';
         const cobroExtra = p.cobroExtra || 'NO';
-        // Si cobroExtra es un número (ej. "25") lo usamos como porcentaje; si es "NO" no hay upsell
         const upsellPercent = (cobroExtra !== 'NO' && !isNaN(parseFloat(cobroExtra))) ? parseFloat(cobroExtra) : 0;
 
         return {
@@ -786,11 +792,13 @@
         };
       });
 
-      // Filtrar items con precio > 0 y nombre no vacío
-      return items.filter(i => i.name && i.price > 0);
+      // Filtramos los que tienen precio > 0 y nombre
+      const validItems = items.filter(i => i.name && i.price > 0);
+      console.log('Items categorizados:', validItems.map(i => ({ name: i.name, cat: i.cat })));
+      return validItems;
     }
 
-    // Catálogo por defecto (fallback) - mantiene compatibilidad
+    // Catálogo por defecto (fallback)
     function getCatalogoDefecto() {
       return [
         { id: 1, name: "Mi tema", price: 5, cat: 'normal', desc: "Elegí una música que sonará durante la reunión del sábado.", campos: ['Canción'], campoExtra: '', upsellPercent: 0 },
@@ -823,7 +831,6 @@
         const resp = await fetch(SCRIPT_URL + "?source=store");
         const data = await resp.json();
 
-        // Admin
         const adminData = data.admin || null;
         if (adminData) {
           catalogItems = construirCatalogo(adminData);
@@ -833,20 +840,15 @@
           catalogItems = getCatalogoDefecto();
         }
 
-        // Estado de tienda
         isStoreOpen = (data.storeState !== "CLOSED");
         document.getElementById('storeClosedMsg').style.display = isStoreOpen ? 'none' : 'block';
 
-        // Logs (para muro y admin)
         globalLogs = data.logs || [];
 
-        // Si es invitada, renderizar sin login
         if (isGuest) {
           actualizarMuroYAdmin(globalLogs);
           render();
         }
-
-        // Cargar filtros guardados (si hay sesión, se hará en login)
       } catch (e) {
         console.error(e);
         document.getElementById('muroList').innerHTML = '<li>Error al cargar datos. Recarga la página.</li>';
@@ -959,9 +961,8 @@
       }
       document.getElementById('storeClosedMsg').style.display = 'none';
 
-      // Filtrar por modos activos
+      // Filtrar por modos activos: muestra los que tienen cat en activeModes true, O los que son 'always'
       let items = catalogItems.filter(i => activeModes[i.cat] || activeModes.always);
-      // Ordenar por precio ascendente
       items.sort((a, b) => a.price - b.price);
 
       if (items.length === 0) {
@@ -1004,7 +1005,6 @@
       document.getElementById('buyTitle').innerText = activeItem.name;
       document.getElementById('buyDesc').innerText = activeItem.desc;
 
-      // Generar campos dinámicos
       const fieldsContainer = document.getElementById('dynamicFields');
       fieldsContainer.innerHTML = '';
       if (activeItem.campos && activeItem.campos.length > 0) {
@@ -1021,7 +1021,6 @@
         });
       }
 
-      // Configurar upsell
       const upSection = document.getElementById('upsellSection');
       const upsellCheck = document.getElementById('upsellCheck');
       const upsellMsg = document.getElementById('upsellMsg');
@@ -1070,7 +1069,6 @@
 
       if (user.jeroCoins < cost) return mostrarMensaje("No tenés suficientes ✦ para este privilegio.");
 
-      // Recolectar campos
       let specsArray = [];
       if (activeItem.campos && activeItem.campos.length > 0) {
         activeItem.campos.forEach(f => {
@@ -1163,10 +1161,18 @@
         mostrarMensaje("Inicia sesión para cambiar los filtros de la tienda.");
         return;
       }
+
+      // Alternar el estado del modo seleccionado
       activeModes[cat] = !activeModes[cat];
-      const btn = document.getElementById(btnId);
-      if (btn) btn.classList.toggle('active', activeModes[cat]);
+
+      // Si desactivamos el último modo activo (excepto 'always'), activamos 'normal' por defecto
+      const hasActive = activeModes.normal || activeModes.publica || activeModes.dinamica || activeModes.panchos;
+      if (!hasActive) {
+        activeModes.normal = true;
+      }
+
       guardarFiltros();
+      actualizarBotonesModo();
       render();
     }
 
